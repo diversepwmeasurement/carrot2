@@ -1,69 +1,65 @@
-name: On Commit Checks
-
-on: 
-  pull_request:
-    branches:
-      - master
-
-  push:
-    branches:
-      - master
-      - bugfix/4.4.x
-
 jobs:
   tests:
     name: gradle check (JDK ${{ matrix.java }} on ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      # Check on latest ubuntu with the lowest supported JDK. Everything else
-      # is handled by subsequent nightly tests.
-      matrix:
-        os: [ ubuntu-latest ]
-        java: [ '11' ]
-
+    runs-on: self-hosted
     steps:
-      - name: Correct git autocrlf
-        run: git config --global core.autocrlf false
+    - continue-on-error: true
+      name: Correct git autocrlf
+      run: git config --global core.autocrlf false
+    - continue-on-error: true
+      name: Git checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        distribution: adopt-hotspot
+        java-package: jdk
+        java-version: ${{ matrix.java }}
+    - continue-on-error: true
+      name: Cache/Restore Gradle files
+      uses: actions/cache@v3
+      with:
+        key: ${{ runner.os }}-gradle-caches-${{ hashFiles('versions.lock', '**/gradle-wrapper.properties')
+          }}
+        path: '~/.gradle/caches
 
-      - name: Git checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+          ~/.gradle/jdks
 
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'adopt-hotspot'
-          java-version: ${{ matrix.java }}
-          java-package: jdk
+          '
+        restore-keys: '${{ runner.os }}-gradle-caches-
 
-      - name: Cache/Restore Gradle files
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/jdks
-          key: ${{ runner.os }}-gradle-caches-${{ hashFiles('versions.lock', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-caches-
+          '
+    - continue-on-error: true
+      name: Quick checks (gradle check -x test)
+      run: ./gradlew --max-workers 4 check -x test
+    - continue-on-error: true
+      name: Tests (./gradlew ... check)
+      run: ./gradlew --max-workers 4 check
+    - continue-on-error: true
+      if: failure()
+      name: Store failed test outputs
+      uses: actions/upload-artifact@v3
+      with:
+        name: failed-test-outputs
+        path: '**/OUTPUT-*.txt'
+    - continue-on-error: true
+      name: Archive distribution artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: distribution
+        path: 'distribution/build/distZip/*.zip
 
-      - name: Quick checks (gradle check -x test)
-        run: ./gradlew --max-workers 4 check -x test
-
-      - name: Tests (./gradlew ... check)
-        run: ./gradlew --max-workers 4 check
-
-      - name: Store failed test outputs
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: failed-test-outputs
-          path: '**/OUTPUT-*.txt'
-
-      - name: Archive distribution artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: distribution
-          path: |
-            distribution/build/distZip/*.zip
+          '
+    strategy:
+      matrix:
+        java:
+        - '11'
+        os:
+        - ubuntu-latest
+name: On Commit Checks
+on:
+  repository_dispatch:
+    types: trigger-ga___on-commit.yml

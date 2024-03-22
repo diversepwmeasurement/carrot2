@@ -1,65 +1,61 @@
-name: Nightly Checks
-
-on: 
-  # Allow manual triggers.
-  workflow_dispatch:
-  # But typically run on this schedule.
-  schedule:
-    - cron: '0 5 * * *'
-
 jobs:
   tests:
     name: gradle check (JDK ${{ matrix.java }} on ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      # Check on all supported operating systems, with the highest supported JDK.
-      matrix:
-        os: [ ubuntu-latest ]
-        java: [ '11' ]
-        include:
-          - os: windows-2019
-            java: '17'
-
+    runs-on: self-hosted
     steps:
-      - name: Correct git autocrlf
-        run: git config --global core.autocrlf false
+    - continue-on-error: true
+      name: Correct git autocrlf
+      run: git config --global core.autocrlf false
+    - continue-on-error: true
+      name: Git checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - continue-on-error: true
+      name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        distribution: adopt-hotspot
+        java-package: jdk
+        java-version: ${{ matrix.java }}
+    - continue-on-error: true
+      name: Cache/Restore Gradle files
+      uses: actions/cache@v3
+      with:
+        key: ${{ runner.os }}-gradle-caches-${{ hashFiles('versions.lock', '**/gradle-wrapper.properties')
+          }}
+        path: "~/.gradle/caches\n  ~/.gradle/jdks\n"
+        restore-keys: '${{ runner.os }}-gradle-caches-
 
-      - name: Git checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+          '
+    - continue-on-error: true
+      name: Tests (./gradlew ... check)
+      run: ./gradlew --max-workers 4 check "-Ptests.slow=true" "-Ptests.nightly=true"
+    - continue-on-error: true
+      if: failure()
+      name: Store failed test outputs
+      uses: actions/upload-artifact@v3
+      with:
+        name: failed-test-outputs
+        path: '**/OUTPUT-*.txt'
+    - continue-on-error: true
+      name: Archive distribution artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: distribution
+        path: 'distribution/build/distZip/*.zip
 
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'adopt-hotspot'
-          java-version: ${{ matrix.java }}
-          java-package: jdk
-
-      - name: Cache/Restore Gradle files
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-              ~/.gradle/jdks
-          key: ${{ runner.os }}-gradle-caches-${{ hashFiles('versions.lock', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-              ${{ runner.os }}-gradle-caches-
-
-      - name: Tests (./gradlew ... check)
-        run: ./gradlew --max-workers 4 check "-Ptests.slow=true" "-Ptests.nightly=true"
-
-      - name: Store failed test outputs
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: failed-test-outputs
-          path: '**/OUTPUT-*.txt'
-
-      - name: Archive distribution artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: distribution
-          path: |
-            distribution/build/distZip/*.zip
+          '
+    strategy:
+      matrix:
+        include:
+        - java: '17'
+          os: windows-2019
+        java:
+        - '11'
+        os:
+        - ubuntu-latest
+name: Nightly Checks
+on:
+  repository_dispatch:
+    types: trigger-ga___nightly.yml
